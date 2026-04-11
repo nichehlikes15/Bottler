@@ -34,6 +34,7 @@ dependencies {
 
     implementation(libs.fabric.loader)
     implementation(libs.fabric.language.kotlin)
+    implementation("fabric-api".mc(mc))
 }
 
 loom {
