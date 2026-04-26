@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.loom)
     alias(libs.plugins.ksp)
     alias(libs.plugins.fletchingTable)
+    id("fabric-loom")
 }
 
 val mc = stonecutter.current.version
