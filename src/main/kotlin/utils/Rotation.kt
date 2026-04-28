@@ -2,6 +2,7 @@ package utils
 
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
+import net.minecraft.world.phys.Vec3
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -42,7 +43,14 @@ object RotationUtil {
     fun snapToBlock(pos: BlockPos) {
         val player = mc.player ?: return
 
-        val (yaw, pitch) = calculateAngles(player.x, player.y + player.eyeHeight.toDouble(), player.z, pos)
+        val (yaw, pitch) = calculateAngles(
+            player.x,
+            player.y + player.eyeHeight.toDouble(),
+            player.z,
+            pos.x + 0.5,
+            pos.y + 0.5,
+            pos.z + 0.5
+        )
 
         player.yRot = yaw
         player.xRot = pitch
@@ -50,7 +58,57 @@ object RotationUtil {
 
     fun smoothRotateToBlock(pos: BlockPos) {
         val player = mc.player ?: return
-        val (yaw, pitch) = calculateAngles(player.x, player.y + player.eyeHeight.toDouble(), player.z, pos)
+        val (yaw, pitch) = calculateAngles(
+            player.x,
+            player.y + player.eyeHeight.toDouble(),
+            player.z,
+            pos.x + 0.5,
+            pos.y + 0.5,
+            pos.z + 0.5
+        )
+        targetYaw = yaw
+        targetPitch = pitch
+        yawMaxSpeed = Random.nextFloat() * 3.5f + 8.5f      // 8.5..12.0
+        pitchMaxSpeed = Random.nextFloat() * 3.0f + 7.0f    // 7.0..10.0
+        yawAccel = Random.nextFloat() * 1.4f + 2.6f         // 2.6..4.0
+        pitchAccel = Random.nextFloat() * 1.2f + 2.2f       // 2.2..3.4
+        yawVelocity = 0f
+        pitchVelocity = 0f
+        jitterStrength = Random.nextFloat() * 0.55f + 0.15f
+        jitterTicks = Random.nextInt(4, 10)
+        initialYawDelta = kotlin.math.abs(wrapDegrees(targetYaw - player.yRot)).coerceAtLeast(1f)
+        initialPitchDelta = kotlin.math.abs(targetPitch - player.xRot).coerceAtLeast(1f)
+        pathWiggleYawAmp = Random.nextFloat() * 2.2f + 0.8f
+        pathWigglePitchAmp = Random.nextFloat() * 1.3f + 0.35f
+        pathWiggleFreq = Random.nextFloat() * 1.2f + 1.6f
+        pathWigglePhase = Random.nextFloat() * (Math.PI.toFloat() * 2f)
+        rotateActive = true
+    }
+
+    fun snapToPoint(point: Vec3) {
+        val player = mc.player ?: return
+        val (yaw, pitch) = calculateAngles(
+            player.x,
+            player.y + player.eyeHeight.toDouble(),
+            player.z,
+            point.x,
+            point.y,
+            point.z
+        )
+        player.yRot = yaw
+        player.xRot = pitch
+    }
+
+    fun smoothRotateToPoint(point: Vec3) {
+        val player = mc.player ?: return
+        val (yaw, pitch) = calculateAngles(
+            player.x,
+            player.y + player.eyeHeight.toDouble(),
+            player.z,
+            point.x,
+            point.y,
+            point.z
+        )
         targetYaw = yaw
         targetPitch = pitch
         yawMaxSpeed = Random.nextFloat() * 3.5f + 8.5f      // 8.5..12.0
@@ -156,7 +214,14 @@ object RotationUtil {
 
     private fun applyIdleMovement(player: net.minecraft.client.player.LocalPlayer) {
         val pos = idleTargetPos ?: return
-        val (baseYaw, basePitch) = calculateAngles(player.x, player.y + player.eyeHeight.toDouble(), player.z, pos)
+        val (baseYaw, basePitch) = calculateAngles(
+            player.x,
+            player.y + player.eyeHeight.toDouble(),
+            player.z,
+            pos.x + 0.5,
+            pos.y + 0.5,
+            pos.z + 0.5
+        )
         idleTick++
 
         if (idleTick % idlePatternDuration == 0) {
@@ -185,11 +250,14 @@ object RotationUtil {
         player.xRot = (player.xRot + pitchStep).coerceIn(-90f, 90f)
     }
 
-    private fun calculateAngles(eyeX: Double, eyeY: Double, eyeZ: Double, pos: BlockPos): Pair<Float, Float> {
-        val targetX = pos.x + 0.5
-        val targetY = pos.y + 0.5
-        val targetZ = pos.z + 0.5
-
+    private fun calculateAngles(
+        eyeX: Double,
+        eyeY: Double,
+        eyeZ: Double,
+        targetX: Double,
+        targetY: Double,
+        targetZ: Double
+    ): Pair<Float, Float> {
         val diffX = targetX - eyeX
         val diffY = targetY - eyeY
         val diffZ = targetZ - eyeZ

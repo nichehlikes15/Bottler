@@ -43,11 +43,15 @@ fun releaseLeftClick() {
 private fun registerMiningTickIfNeeded() {
     if (miningRegistered) return
 
-    ClientTickEvents.END_CLIENT_TICK.register { client ->
+    ClientTickEvents.START_CLIENT_TICK.register { client ->
         val options = client.options ?: return@register
         val key = (options.keyAttack as KeyMappingAccessor).boundKey
 
-        if (!miningActive || client.screen != null) {
+        if (!miningActive) {
+            return@register
+        }
+
+        if (client.screen != null) {
             KeyMapping.set(key, false)
             return@register
         }

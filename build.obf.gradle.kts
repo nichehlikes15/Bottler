@@ -40,6 +40,7 @@ dependencies {
     modImplementation(libs.fabric.loader)
     modImplementation(libs.fabric.language.kotlin)
     modImplementation("fabric-api".mc(mc))
+    modImplementation("fabric-rendering-v1".mc(mc))
 }
 
 loom {

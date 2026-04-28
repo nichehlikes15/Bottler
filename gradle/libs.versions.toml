@@ -26,6 +26,11 @@ fabric-api-1-21-10 = { module = "net.fabricmc.fabric-api:fabric-api", version.re
 fabric-api-1-21-11 = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fabric-api-1-21-11" }
 fabric-api-26-1 = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fabric-api-26-1" }
 
+# Explicit module deps (some setups don't expose everything via fabric-api aggregate)
+fabric-rendering-v1-1-21-10 = { module = "net.fabricmc.fabric-api:fabric-rendering-v1", version.ref = "fabric-api-1-21-10" }
+fabric-rendering-v1-1-21-11 = { module = "net.fabricmc.fabric-api:fabric-rendering-v1", version.ref = "fabric-api-1-21-11" }
+fabric-rendering-v1-26-1 = { module = "net.fabricmc.fabric-api:fabric-rendering-v1", version.ref = "fabric-api-26-1" }
+
 parchment-1-21-10 = { module = "org.parchmentmc.data:parchment-1.21.10", version.ref = "parchment-1-21-10" }
 parchment-1-21-11 = { module = "org.parchmentmc.data:parchment-1.21.11", version.ref = "parchment-1-21-11" }
 
