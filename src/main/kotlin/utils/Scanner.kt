@@ -13,24 +13,20 @@ import kotlin.random.Random
 object BlockScanner {
 
     private val mc = Minecraft.getInstance()
-    private const val BREAK_TIMEOUT_MS = 15_000L
+    private const val BREAK_TIMEOUT_MS = 5_000L
     private const val AIMPOINT_TRIES = 24
 
     private var currentTarget: BlockPos? = null
     private var targetSinceMs: Long = 0L
 
-    fun findGrayWool(radius: Int = 4): BlockPos? = findWhitelistedBlock(radius)
-
     data class ScanTarget(val pos: BlockPos, val aimPoint: Vec3)
 
     fun findWhitelistedTarget(radius: Int = 4, anchor: BlockPos? = null): ScanTarget? {
         val pos = findWhitelistedBlock(radius, anchor) ?: return null
-        val aim = findAimPointForBlock(pos) ?: Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
-        return ScanTarget(pos, aim)
-    }
+        val aim = findAimPointForBlock(pos)
+            ?: Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
 
-    fun findWhitelistedBlock(radius: Int = 4): BlockPos? {
-        return findWhitelistedBlock(radius, anchor = null)
+        return ScanTarget(pos, aim)
     }
 
     fun findWhitelistedBlock(radius: Int = 4, anchor: BlockPos? = null): BlockPos? {
@@ -39,16 +35,25 @@ object BlockScanner {
 
         val now = System.currentTimeMillis()
         val playerPos = player.eyePosition
-        val interactionReach = player.blockInteractionRange()
-        val maxDistanceSq = min(radius.toDouble(), interactionReach).let { it * it }
-        val prioritizedBlocks = BlockWhitelist.prioritizedBlocks
-        if (prioritizedBlocks.isEmpty()) return null
+        val reach = player.blockInteractionRange()
+        val maxDistanceSq = min(radius.toDouble(), reach).let { it * it }
+
+        val entries = BlockWhitelist.prioritizedBlocks
+
+        val group1 = entries
+            .filter { it.group == BlockWhitelist.Group.GROUP_1 }
+            .map { it.block }
+
+        val group2 = entries
+            .filter { it.group == BlockWhitelist.Group.GROUP_2 }
+            .map { it.block }
 
         fun distanceSqToEye(pos: BlockPos): Double {
-            val centerX = pos.x + 0.5
-            val centerY = pos.y + 0.5
-            val centerZ = pos.z + 0.5
-            return playerPos.distanceToSqr(centerX, centerY, centerZ)
+            return playerPos.distanceToSqr(
+                pos.x + 0.5,
+                pos.y + 0.5,
+                pos.z + 0.5
+            )
         }
 
         fun distanceSqToAnchor(pos: BlockPos): Double {
@@ -56,8 +61,7 @@ object BlockScanner {
             val dx = (pos.x - a.x).toDouble()
             val dy = (pos.y - a.y).toDouble()
             val dz = (pos.z - a.z).toDouble()
-            // block-to-block closeness: use block-grid distance (fast + stable)
-            return (dx * dx) + (dy * dy) + (dz * dz)
+            return dx * dx + dy * dy + dz * dz
         }
 
         fun canDirectlyTarget(pos: BlockPos): Boolean {
@@ -72,19 +76,14 @@ object BlockScanner {
                 )
             )
             return hit.type == HitResult.Type.BLOCK &&
-                hit is BlockHitResult &&
-                hit.blockPos == pos
+                    hit is BlockHitResult &&
+                    hit.blockPos == pos
         }
 
-        fun isWhitelisted(block: Block): Boolean {
-            LOGGER.info("isWhitelisted: $block")
-            return prioritizedBlocks.contains(block)
-        }
-
-        // Keep current target while within timeout, unless it has already been broken.
         currentTarget?.let { target ->
-            val currentState = level.getBlockState(target)
-            if (!isWhitelisted(currentState.block)) {
+            val state = level.getBlockState(target)
+
+            if (!entries.any { it.block == state.block }) {
                 currentTarget = null
                 targetSinceMs = 0L
             } else if (distanceSqToEye(target) > maxDistanceSq) {
@@ -99,57 +98,48 @@ object BlockScanner {
         }
 
         val base = player.blockPosition()
-        var nearest: BlockPos? = null
-        var nearestDistanceSq = Double.MAX_VALUE
 
-        val timedOutTarget = currentTarget
-        for (targetBlock in prioritizedBlocks) {
-            nearest = null
-            nearestDistanceSq = Double.MAX_VALUE
+        fun scan(blocks: List<Block>): BlockPos? {
+            var nearest: BlockPos? = null
+            var nearestDist = Double.MAX_VALUE
 
-            for (dx in -radius..radius) {
-                for (dy in -radius..radius) {
-                    for (dz in -radius..radius) {
-                        val pos = base.offset(dx, dy, dz)
-                        val state = level.getBlockState(pos)
-                        if (state.block != targetBlock) continue
+            for (block in blocks) {
+                for (dx in -radius..radius) {
+                    for (dy in -radius..radius) {
+                        for (dz in -radius..radius) {
 
-                        // If the previous target timed out, force a switch away from it when possible.
-                        if (timedOutTarget != null && pos == timedOutTarget) continue
+                            val pos = base.offset(dx, dy, dz)
+                            val state = level.getBlockState(pos)
 
-                        val eyeDistanceSq = distanceSqToEye(pos)
-                        if (eyeDistanceSq > maxDistanceSq) continue
-                        if (!canDirectlyTarget(pos)) continue
+                            if (state.block != block) continue
+                            if (distanceSqToEye(pos) > maxDistanceSq) continue
+                            if (!canDirectlyTarget(pos)) continue
 
-                        // Prefer blocks closest to the last-mined block, but still enforce reach/visibility from player.
-                        val anchorDistanceSq = distanceSqToAnchor(pos)
-                        if (anchorDistanceSq < nearestDistanceSq) {
-                            nearestDistanceSq = anchorDistanceSq
-                            nearest = pos.immutable()
+                            val dist = distanceSqToAnchor(pos)
+                            if (dist < nearestDist) {
+                                nearestDist = dist
+                                nearest = pos.immutable()
+                            }
                         }
                     }
                 }
             }
 
-            if (nearest != null) break
-        }
-
-        if (nearest != null) {
-            currentTarget = nearest
-            targetSinceMs = now
             return nearest
         }
 
-        // If only the timed out block is available, keep trying it.
-        if (
-            timedOutTarget != null &&
-            isWhitelisted(level.getBlockState(timedOutTarget).block) &&
-            distanceSqToEye(timedOutTarget) <= maxDistanceSq &&
-            canDirectlyTarget(timedOutTarget)
-        ) {
-            currentTarget = timedOutTarget
+        val g1Result = scan(group1)
+        if (g1Result != null) {
+            currentTarget = g1Result
             targetSinceMs = now
-            return timedOutTarget
+            return g1Result
+        }
+
+        val g2Result = scan(group2)
+        if (g2Result != null) {
+            currentTarget = g2Result
+            targetSinceMs = now
+            return g2Result
         }
 
         currentTarget = null
@@ -166,6 +156,7 @@ object BlockScanner {
 
         fun tryPoint(candidate: Vec3): Vec3? {
             if (eyePos.distanceToSqr(candidate) > maxDistSq) return null
+
             val hit = level.clip(
                 ClipContext(
                     eyePos,
@@ -175,21 +166,22 @@ object BlockScanner {
                     player
                 )
             )
+
             if (hit.type != HitResult.Type.BLOCK) return null
             if (hit !is BlockHitResult) return null
             if (hit.blockPos != pos) return null
+
             return hit.location
         }
 
-        // First attempt: center ray (fast path).
         val center = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
         tryPoint(center)?.let { return it }
 
-        // Then sample points inside the block volume; clip() will snap to the face actually hit.
         repeat(AIMPOINT_TRIES) {
             val rx = Random.nextDouble(0.15, 0.85)
             val ry = Random.nextDouble(0.15, 0.85)
             val rz = Random.nextDouble(0.15, 0.85)
+
             val candidate = Vec3(pos.x + rx, pos.y + ry, pos.z + rz)
             tryPoint(candidate)?.let { return it }
         }
